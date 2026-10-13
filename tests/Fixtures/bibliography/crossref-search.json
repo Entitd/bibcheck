@@ -1,0 +1,31 @@
+{
+  "message": {
+    "items": [
+      {
+        "DOI": "10.1234/example",
+        "title": [
+          "Example Article"
+        ],
+        "author": [
+          {
+            "family": "Smith",
+            "given": "John"
+          }
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2020
+            ]
+          ]
+        },
+        "container-title": [
+          "Journal of Examples"
+        ],
+        "volume": "1",
+        "issue": "2",
+        "page": "1-10"
+      }
+    ]
+  }
+}

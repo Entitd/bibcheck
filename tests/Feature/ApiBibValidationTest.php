@@ -65,21 +65,9 @@ test('it checks bibtex content against department requirements', function () {
 });
 
 test('it checks bibtex content against external sources', function () {
-    config(['services.openalex.url' => 'https://api.openalex.org/']);
+    Http::preventStrayRequests();
 
-    Http::fake([
-        'https://api.openalex.org/works*' => Http::response([
-            'results' => [
-                [
-                    'title' => 'Example Article',
-                    'publication_year' => 2020,
-                    'authorships' => [
-                        ['author' => ['display_name' => 'John Smith']],
-                    ],
-                ],
-            ],
-        ]),
-    ]);
+    Http::fake(['api.crossref.org/works*' => Http::response(json_decode(file_get_contents(base_path('tests/Fixtures/bibliography/crossref-search.json')), true))]);
 
     $response = $this->postJson('/api/bib/check-external', [
         'text' => validArticleBib(),
@@ -100,21 +88,9 @@ test('it runs full bibtex check', function () {
         'min_21st_century' => 1,
     ]);
 
-    config(['services.openalex.url' => 'https://api.openalex.org/']);
+    Http::preventStrayRequests();
 
-    Http::fake([
-        'https://api.openalex.org/works*' => Http::response([
-            'results' => [
-                [
-                    'title' => 'Example Article',
-                    'publication_year' => 2020,
-                    'authorships' => [
-                        ['author' => ['display_name' => 'John Smith']],
-                    ],
-                ],
-            ],
-        ]),
-    ]);
+    Http::fake(['api.crossref.org/works*' => Http::response(json_decode(file_get_contents(base_path('tests/Fixtures/bibliography/crossref-search.json')), true))]);
 
     $response = $this->postJson('/api/bib/check-full', [
         'text' => validArticleBib(),

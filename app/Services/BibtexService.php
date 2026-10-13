@@ -7,6 +7,7 @@ use App\Models\CourseRequirement;
 use App\Services\Bibtex\GostValidator;
 use App\Services\Bibtex\Parser;
 use App\Services\ExternalApi\BibValidator;
+use Illuminate\Validation\ValidationException;
 
 class BibtexService
 {
@@ -20,6 +21,7 @@ class BibtexService
     {
         $data = $this->parser->parse($bibText);
 
+        $this->assertUniqueKeys($data['entries']);
         $results = [];
         $errors = $data['error'] ?? [];
 
@@ -45,11 +47,14 @@ class BibtexService
 
     public function fullCheck(string $bibText): array
     {
+        if (count($this->parser->parse($bibText)['entries']) > config('bibliography.sync_max_entries')) {
+            throw ValidationException::withMessages(['text' => 'Синхронная проверка ограничена '.config('bibliography.sync_max_entries').' записями. Используйте POST /bibliography/external-checks с сессией пользователя.']);
+        }
         $analysis = $this->localCheck($bibText);
         $department = $this->compareWithDepartmentRequirements($analysis['aggregated_metrics']);
 
         foreach ($analysis['entries'] as $key => $entry) {
-            $apiResult = $this->api->verifySourceOnline($entry['fields']);
+            $apiResult = $this->api->verifySourceOnline($entry['fields'], $entry['type']);
 
             $analysis['entries'][$key]['api_check'] = $apiResult;
         }
@@ -78,11 +83,14 @@ class BibtexService
 
     public function externalCheck(string $bibText): array
     {
+        if (count($this->parser->parse($bibText)['entries']) > config('bibliography.sync_max_entries')) {
+            throw ValidationException::withMessages(['text' => 'Синхронная проверка ограничена '.config('bibliography.sync_max_entries').' записями. Используйте POST /bibliography/external-checks с сессией пользователя.']);
+        }
         $data = $this->parser->parse($bibText);
         $entries = $this->mapEntries($data['entries']);
 
         foreach ($entries as $key => $entry) {
-            $entries[$key]['api_check'] = $this->api->verifySourceOnline($entry['fields']);
+            $entries[$key]['api_check'] = $this->api->verifySourceOnline($entry['fields'], $entry['type']);
         }
 
         return [
@@ -92,13 +100,22 @@ class BibtexService
         ];
     }
 
-    public function verifySource(array $fields): array
+    public function verifySource(array $fields, string $type = 'article'): array
     {
-        return $this->api->verifySourceOnline($fields);
+        return $this->api->verifySourceOnline($fields, $type);
+    }
+
+    private function assertUniqueKeys(array $entries): void
+    {
+        $keys = array_map(fn ($entry) => $entry->key, $entries);
+        if (count($keys) !== count(array_unique($keys))) {
+            throw ValidationException::withMessages(['text' => 'Обнаружены повторяющиеся ключи BibLaTeX.']);
+        }
     }
 
     private function mapEntries(array $entries): array
     {
+        $this->assertUniqueKeys($entries);
         $mapped = [];
 
         /** @var BibEntryDTO $entry */
@@ -191,35 +208,30 @@ class BibtexService
         return 'Department requirements are not configured.';
     }
 
-    private function calculateApiMetrics(array $results): array
+    public function calculateApiMetrics(array $results): array
     {
-        $found = 0;
-        $notFound = 0;
-        $errors = 0;
-        $totalSimilarity = 0.0;
-        $similarityCount = 0;
-
+        $counts = array_fill_keys(['verified', 'mismatch', 'partial_match', 'ambiguous', 'not_found', 'incomplete', 'not_checkable', 'invalid_input'], 0);
+        $similarities = [];
         foreach ($results as $entry) {
             $api = $entry['api_check'] ?? [];
-
-            if ($api['found'] ?? false) {
-                $found++;
-                if (isset($api['similarity'])) {
-                    $totalSimilarity += $api['similarity'];
-                    $similarityCount++;
-                }
-            } elseif (($api['status'] ?? null) === 'api_error') {
-                $errors++;
-            } else {
-                $notFound++;
+            $status = $api['status'] ?? null;
+            if (isset($counts[$status])) {
+                $counts[$status]++;
+            }
+            if (isset($api['similarity'])) {
+                $similarities[] = $api['similarity'];
             }
         }
 
         return [
-            'api_found' => $found,
-            'api_not_found' => $notFound,
-            'api_errors' => $errors,
-            'api_average_similarity' => $similarityCount > 0 ? round($totalSimilarity / $similarityCount) : 0,
+            'api_found' => $counts['verified'],
+            'api_not_found' => $counts['not_found'],
+            'api_errors' => $counts['incomplete'],
+            'api_average_similarity' => $similarities ? round(array_sum($similarities) / count($similarities)) : 0,
+            'verified_count' => $counts['verified'], 'mismatch_count' => $counts['mismatch'],
+            'partial_count' => $counts['partial_match'], 'ambiguous_count' => $counts['ambiguous'],
+            'not_found_count' => $counts['not_found'], 'incomplete_count' => $counts['incomplete'],
+            'not_checkable_count' => $counts['not_checkable'], 'invalid_input_count' => $counts['invalid_input'],
         ];
     }
 }

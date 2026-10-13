@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\CheckHistory;
+use App\Models\ExternalCheckRun;
+use App\Services\Bibliography\ExternalCheckService;
 use App\Support\BibEditorViewData;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -17,7 +19,7 @@ class CheckHistoryController extends Controller
     {
         $user = Auth::user();
 
-        if (!$user) {
+        if (! $user) {
             return response()->json([]);
         }
 
@@ -37,7 +39,7 @@ class CheckHistoryController extends Controller
     {
         $user = Auth::user();
 
-        if (!$user) {
+        if (! $user) {
             abort(403, 'Необходима авторизация');
         }
 
@@ -48,6 +50,10 @@ class CheckHistoryController extends Controller
         $analysisResults = $check->analysis_data ?? [];
 
         // Добавляем дополнительные поля для отображения
+        $run = ExternalCheckRun::where('check_history_id', $check->id)->where('user_id', $user->id)->first();
+        if ($run) {
+            $analysisResults = app(ExternalCheckService::class)->payload($run)['analysis'];
+        }
         $analysisResults['raw_content'] = $check->content;
         $analysisResults['original_filename'] = $check->filename;
         $analysisResults['course_comparison_result'] = $check->verdict;
@@ -67,6 +73,10 @@ class CheckHistoryController extends Controller
         $history = CheckHistory::where('user_id', $user->id)
             ->findOrFail($id);
 
+        foreach (ExternalCheckRun::where('check_history_id', $history->id)->get() as $run) {
+            app(ExternalCheckService::class)->cancel($run);
+            $run->delete();
+        }
         $history->delete();
 
         return redirect()->route('bib.blade');

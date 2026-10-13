@@ -27,13 +27,16 @@ class ApiSourceController extends Controller
             $parseErrors = $parsed['error'] ?? [];
             $entry = $parsed['entries'][0] ?? null;
 
-            if (!$entry instanceof BibEntryDTO) {
+            if (! $entry instanceof BibEntryDTO) {
                 return response()->json([
                     'message' => 'No BibTeX entry found.',
                     'errors' => $parseErrors,
                 ], 422);
             }
 
+            if (count($parsed['entries']) !== 1) {
+                return response()->json(['message' => 'Передайте ровно одну запись BibLaTeX.'], 422);
+            }
             $fields = $entry->fields;
         }
 
@@ -46,7 +49,7 @@ class ApiSourceController extends Controller
                     'fields' => $entry->fields,
                 ] : null,
                 'errors' => $parseErrors,
-                'api_check' => $this->bibtexService->verifySource($fields),
+                'api_check' => $this->bibtexService->verifySource($fields, $entry?->type ?? $request->input('type', 'article')),
             ],
         ]);
     }

@@ -8,12 +8,41 @@ export type BibtexAnalysisError = {
     message: string;
 };
 
+export type BibliographicCandidate = {
+    title?: string | null;
+    url?: string | null;
+    year?: number | string | null;
+    doi?: string | null;
+};
+
 export type BibtexApiCheck = {
+    schema_version?: number;
     found?: boolean;
+    complete?: boolean;
     status?: string;
+    provider?: string | null;
+    matched_by?: string | null;
+    checked_at?: string;
     similarity?: number | null;
     message?: string;
+    warnings?: string[];
     external_title?: string | null;
+    external_data?: BibliographicCandidate | null;
+    field_checks?: Record<
+        string,
+        { status: string; input?: unknown; external?: unknown }
+    >;
+    provider_checks?: { provider: string; status: string; cached?: boolean }[];
+    candidates?: {
+        provider: string;
+        data: BibliographicCandidate;
+        similarity?: number | null;
+    }[];
+    retraction?: {
+        status: string;
+        notice_url?: string | null;
+        notice_type?: string;
+    };
 };
 
 export type BibtexEntry = {
@@ -31,6 +60,12 @@ export type BibtexAnalysis = {
     course_comparison_result?: string;
     raw_content?: string;
     original_filename?: string;
+    external_run?: {
+        id: string;
+        status: string;
+        finished_entries?: number;
+        total_entries?: number;
+    };
 };
 
 export type BibtexTypeTemplate = {
@@ -734,13 +769,6 @@ function generateVerdict(metrics: Record<string, number | string>) {
         metrics.numberOfCurrentScientificPeriodicals ?? 0,
     );
     const modern = Number(metrics.Literature21Century ?? 0);
-    const hasApiMetrics =
-        'api_found' in metrics ||
-        'api_not_found' in metrics ||
-        'api_errors' in metrics;
-    const apiFound = Number(metrics.api_found ?? 0);
-    const apiErrors = Number(metrics.api_errors ?? 0);
-    const apiAvgSimilarity = Number(metrics.api_average_similarity ?? 0);
     const issues: string[] = [];
 
     if (total < 10) {
@@ -759,20 +787,8 @@ function generateVerdict(metrics: Record<string, number | string>) {
         issues.push('нет источников XXI века');
     }
 
-    if (hasApiMetrics) {
-        if (apiErrors > 0) {
-            issues.push(`ошибки связи с OpenAlex (${apiErrors})`);
-        } else if (apiFound === 0 && total > 0) {
-            issues.push('ни один источник не найден в OpenAlex');
-        }
-    }
-
     if (!issues.length) {
-        const apiSummary = hasApiMetrics
-            ? `, найдено в OpenAlex: ${apiFound} (среднее совпадение: ${apiAvgSimilarity}%)`
-            : '';
-
-        return `Полностью соответствует требованиям. Источников: ${total}, иностранных: ${foreign}, периодика: ${periodicals}, современные: ${modern}${apiSummary}.`;
+        return `Полностью соответствует требованиям. Источников: ${total}, иностранных: ${foreign}, периодика: ${periodicals}, современные: ${modern}.`;
     }
 
     return `Не соответствует требованиям кафедры: ${issues.join(', ')}.`;

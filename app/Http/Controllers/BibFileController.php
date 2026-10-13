@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\BibFile;
 use App\Models\CheckHistory;
+use App\Services\Bibliography\ExternalCheckService;
 use App\Services\BibtexService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -45,7 +46,7 @@ class BibFileController extends Controller
     public function create(Request $request)
     {
         $validated = $request->validate([
-            'bib_content' => 'required|string',
+            'bib_content' => 'required|string|max:100000',
             'original_filename' => 'required|string|max:255',
         ]);
 
@@ -103,16 +104,15 @@ class BibFileController extends Controller
     public function checkExternal(Request $request)
     {
         $validated = $request->validate([
-            'bib_content' => 'required|string',
+            'bib_content' => 'required|string|max:100000',
             'original_filename' => 'required|string|max:255',
         ]);
 
         $content = $validated['bib_content'];
-        $analysisResults = $this->parserService->fullCheck($content);
-
-        $analysisResults['raw_content'] = $content;
-        $analysisResults['original_filename'] = $this->normalizeFilename($validated['original_filename']);
-        $analysisResults['course_comparison_result'] = $this->generateVerdict($analysisResults['aggregated_metrics']);
+        $run = app(ExternalCheckService::class)->start(
+            $request->user(), $content, $this->normalizeFilename($validated['original_filename'])
+        );
+        $analysisResults = app(ExternalCheckService::class)->payload($run)['analysis'];
 
         return redirect()->route('bib.blade')->with('analysis', $analysisResults);
     }
@@ -129,9 +129,6 @@ class BibFileController extends Controller
     private function generateVerdict(array $metrics): string
     {
         $total = $metrics['totalQuantity'] ?? 0;
-        $hasApiMetrics = array_key_exists('api_found', $metrics)
-            || array_key_exists('api_not_found', $metrics)
-            || array_key_exists('api_errors', $metrics);
 
         if ($total === 0) {
             return 'Не удалось проанализировать ни одной записи.';
@@ -140,9 +137,6 @@ class BibFileController extends Controller
         $foreign = $metrics['amountOfLiteratureInForeignLanguages'] ?? 0;
         $periodicals = $metrics['numberOfCurrentScientificPeriodicals'] ?? 0;
         $modern = $metrics['Literature21Century'] ?? 0;
-        $apiFound = $metrics['api_found'] ?? 0;
-        $apiErrors = $metrics['api_errors'] ?? 0;
-        $apiAvgSimilarity = $metrics['api_average_similarity'] ?? 0;
 
         $issues = [];
 
@@ -158,20 +152,8 @@ class BibFileController extends Controller
         if ($modern === 0) {
             $issues[] = 'нет источников XXI века';
         }
-        if ($hasApiMetrics) {
-            if ($apiErrors > 0) {
-                $issues[] = "ошибки связи с OpenAlex ({$apiErrors})";
-            } elseif ($apiFound === 0 && $total > 0) {
-                $issues[] = 'ни один источник не найден в OpenAlex';
-            }
-        }
-
-        if (empty($issues) && ! $hasApiMetrics) {
-            return "Полностью соответствует требованиям. Источников: {$total}, иностранных: {$foreign}, периодика: {$periodicals}, современные: {$modern}.";
-        }
-
         if (empty($issues)) {
-            return "Полностью соответствует требованиям. Источников: {$total}, иностранных: {$foreign}, периодика: {$periodicals}, современные: {$modern}, найдено в OpenAlex: {$apiFound} (среднее совпадение: {$apiAvgSimilarity}%).";
+            return "Полностью соответствует требованиям. Источников: {$total}, иностранных: {$foreign}, периодика: {$periodicals}, современные: {$modern}.";
         }
 
         return 'Не соответствует требованиям кафедры: '.implode(', ', $issues).'.';

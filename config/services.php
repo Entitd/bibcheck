@@ -16,7 +16,7 @@ return [
 
     'openalex' => [
         'key' => env('OPENALEX_API_KEY'),
-        'url' => env('OPENALEX_API_URL'),
+        'url' => env('OPENALEX_API_URL', 'https://api.openalex.org'),
     ],
     'postmark' => [
         'key' => env('POSTMARK_API_KEY'),

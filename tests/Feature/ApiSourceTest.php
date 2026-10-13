@@ -3,21 +3,9 @@
 use Illuminate\Support\Facades\Http;
 
 test('it verifies one source by fields', function () {
-    config(['services.openalex.url' => 'https://api.openalex.org/']);
+    Http::preventStrayRequests();
 
-    Http::fake([
-        'https://api.openalex.org/works*' => Http::response([
-            'results' => [
-                [
-                    'title' => 'Example Article',
-                    'publication_year' => 2020,
-                    'authorships' => [
-                        ['author' => ['display_name' => 'John Smith']],
-                    ],
-                ],
-            ],
-        ]),
-    ]);
+    Http::fake(['api.crossref.org/works*' => Http::response(json_decode(file_get_contents(base_path('tests/Fixtures/bibliography/crossref-search.json')), true))]);
 
     $response = $this->postJson('/api/sources/verify', [
         'fields' => [
@@ -35,21 +23,9 @@ test('it verifies one source by fields', function () {
 });
 
 test('it verifies one source by bibtex text', function () {
-    config(['services.openalex.url' => 'https://api.openalex.org/']);
+    Http::preventStrayRequests();
 
-    Http::fake([
-        'https://api.openalex.org/works*' => Http::response([
-            'results' => [
-                [
-                    'title' => 'Example Article',
-                    'publication_year' => 2020,
-                    'authorships' => [
-                        ['author' => ['display_name' => 'John Smith']],
-                    ],
-                ],
-            ],
-        ]),
-    ]);
+    Http::fake(['api.crossref.org/works*' => Http::response(json_decode(file_get_contents(base_path('tests/Fixtures/bibliography/crossref-search.json')), true))]);
 
     $bib = <<<'BIB'
 @article{smith2020,

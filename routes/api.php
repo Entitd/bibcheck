@@ -6,7 +6,6 @@ use App\Http\Controllers\Api\ApiBibValidationController;
 use App\Http\Controllers\Api\ApiSourceController;
 use Illuminate\Support\Facades\Route;
 
-
 /**
  * ----------------НАДО РЕАЛИЗОВАТЬ----------------
  * - Просто парсер, который выдает разбитые записи в json
@@ -22,20 +21,15 @@ use Illuminate\Support\Facades\Route;
  */
 Route::post('/bib/parse', [ApiBibParserController::class, 'parse']);
 Route::post('/bib/check-gost', [ApiBibValidationController::class, 'checkGost']);
-Route::post('/bib/check-full', [ApiBibValidationController::class, 'checkFull']);
+Route::post('/bib/check-full', [ApiBibValidationController::class, 'checkFull'])->middleware('throttle:10,1');
 Route::post('/bib/check-department', [ApiBibValidationController::class, 'checkDepartment']);
-Route::post('/bib/check-external', [ApiBibValidationController::class, 'checkExternal']);
+Route::post('/bib/check-external', [ApiBibValidationController::class, 'checkExternal'])->middleware('throttle:10,1');
 
 Route::get('/bib/types', [ApiBibMetadataController::class, 'types']);
 Route::get('/bib/types/{type}/fields', [ApiBibMetadataController::class, 'fields']);
 Route::get('/requirements', [ApiBibMetadataController::class, 'requirements']);
 
-Route::post('/sources/verify', [ApiSourceController::class, 'verify']);
-
-
-
-
-
+Route::post('/sources/verify', [ApiSourceController::class, 'verify'])->middleware('throttle:20,1');
 
 // use Inertia\Inertia;
 // use Laravel\Fortify\Features;
@@ -52,7 +46,5 @@ Route::post('/sources/verify', [ApiSourceController::class, 'verify']);
 // use App\Support\BibEditorViewData;
 
 // use function Pest\Laravel\post;
-
-
 
 // require __DIR__.'/settings.php';

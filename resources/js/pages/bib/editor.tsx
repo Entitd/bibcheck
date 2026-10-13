@@ -7,15 +7,16 @@ import {
     Upload,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import ExternalSourceResult from '@/components/external-source-result';
 import AppLayout from '@/layouts/app-layout';
-import type { BreadcrumbItem } from '@/types';
-import {
-    analyzeBibtex,
-    type BibtexAnalysis,
-    type BibtexAnalysisError,
-    type BibtexEntry,
-    type BibtexTypeTemplate,
+import { analyzeBibtex } from '@/lib/bibtex-validator';
+import type {
+    BibtexAnalysis,
+    BibtexAnalysisError,
+    BibtexEntry,
+    BibtexTypeTemplate,
 } from '@/lib/bibtex-validator';
+import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -31,8 +32,49 @@ type PageProps = {
     };
 };
 
+type ExternalRun = {
+    id: string;
+    status: string;
+    finished_entries?: number;
+    total_entries?: number;
+    analysis?: BibtexAnalysis;
+};
+
+async function externalRequest(
+    url: string,
+    body?: unknown,
+    signal?: AbortSignal,
+): Promise<ExternalRun> {
+    const token = document.cookie
+        .split('; ')
+        .find((cookie) => cookie.startsWith('XSRF-TOKEN='))
+        ?.slice(11);
+    const response = await fetch(url, {
+        method: body === undefined ? 'GET' : 'POST',
+        credentials: 'same-origin',
+        signal,
+        headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            ...(token ? { 'X-XSRF-TOKEN': decodeURIComponent(token) } : {}),
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const payload = await response.json();
+    if (!response.ok)
+        throw new Error(
+            Object.values(payload.errors ?? {})
+                .flat()
+                .join(' ') ||
+                payload.message ||
+                'Не удалось выполнить проверку.',
+        );
+    return payload.data;
+}
+
 type BibEditorProps = {
     analysis?: BibtexAnalysis | null;
+    externalCheckAvailable?: boolean;
     entries?: Record<string, BibtexEntry>;
     metrics?: Record<string, number | string>;
     errors?: BibtexAnalysisError[];
@@ -117,6 +159,7 @@ export default function BibEditorPage({
     analysis,
     bibtexTypes = [],
     checkHistory,
+    externalCheckAvailable = true,
 }: BibEditorProps) {
     const page = usePage<PageProps>();
     const flash = page.props.flash;
@@ -127,6 +170,11 @@ export default function BibEditorPage({
         () => liveAnalysis.errors,
     );
     const [externalProcessing, setExternalProcessing] = useState(false);
+    const [externalRun, setExternalRun] = useState<ExternalRun | null>(
+        analysis?.external_run ?? null,
+    );
+    const [externalError, setExternalError] = useState('');
+    const [snapshotChanged, setSnapshotChanged] = useState(false);
     const uploadForm = useForm({
         bib_file: null as File | null,
     });
@@ -134,6 +182,86 @@ export default function BibEditorPage({
         bib_content: analysis?.raw_content ?? '',
         original_filename: analysis?.original_filename ?? 'created_file.bib',
     });
+    const contentRef = useRef(updateForm.data.bib_content);
+    contentRef.current = updateForm.data.bib_content;
+    const runActive =
+        externalRun?.status === 'pending' || externalRun?.status === 'running';
+
+    useEffect(() => {
+        setExternalRun(analysis?.external_run ?? null);
+    }, [analysis]);
+
+    useEffect(() => {
+        if (externalRun?.analysis)
+            setSnapshotChanged(
+                externalRun.analysis.raw_content !==
+                    updateForm.data.bib_content,
+            );
+    }, [externalRun?.analysis, updateForm.data.bib_content]);
+
+    useEffect(() => {
+        if (!externalRun?.id || !runActive) return;
+        const controller = new AbortController();
+        let busy = false;
+        const poll = async () => {
+            if (busy) return;
+            busy = true;
+            try {
+                const run = await externalRequest(
+                    `/bibliography/external-checks/${externalRun.id}`,
+                    undefined,
+                    controller.signal,
+                );
+                setExternalRun(run);
+                setExternalError('');
+                if (run.analysis?.raw_content === contentRef.current) {
+                    setLiveAnalysis(run.analysis);
+                    setLiveErrors(run.analysis.errors);
+                    setSnapshotChanged(false);
+                } else {
+                    setSnapshotChanged(true);
+                }
+            } catch (error) {
+                if (!controller.signal.aborted)
+                    setExternalError(
+                        error instanceof Error
+                            ? error.message
+                            : 'Ошибка получения прогресса.',
+                    );
+            } finally {
+                busy = false;
+            }
+        };
+        void poll();
+        const timer = window.setInterval(() => void poll(), 2500);
+        return () => {
+            controller.abort();
+            window.clearInterval(timer);
+        };
+    }, [externalRun?.id, runActive]);
+
+    const startExternalCheck = async () => {
+        setExternalProcessing(true);
+        setExternalError('');
+        setSnapshotChanged(false);
+        try {
+            const run = await externalRequest(
+                '/bibliography/external-checks',
+                updateForm.data,
+            );
+            setExternalRun(run);
+        } catch (error) {
+            setExternalError(
+                error instanceof Error
+                    ? error.message
+                    : 'Не удалось запустить проверку.',
+            );
+        } finally {
+            setExternalProcessing(false);
+        }
+    };
+
+    const setEditorData = updateForm.setData;
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     const lineNumbersRef = useRef<HTMLDivElement | null>(null);
     const contentViewerRef = useRef<HTMLPreElement | null>(null);
@@ -164,12 +292,12 @@ export default function BibEditorPage({
 
         setLiveAnalysis(nextAnalysis);
         setLiveErrors(nextAnalysis.errors);
-        updateForm.setData({
+        setEditorData({
             bib_content: nextContent,
             original_filename:
                 analysis?.original_filename ?? 'created_file.bib',
         });
-    }, [analysis, bibtexTypes]);
+    }, [analysis, bibtexTypes, setEditorData]);
 
     const errorsByLine = useMemo(() => toErrorsMap(liveErrors), [liveErrors]);
     const suggestedTypes = useMemo(() => {
@@ -192,8 +320,17 @@ export default function BibEditorPage({
         amountOfLiteratureInForeignLanguages: 'Иностранные языки',
         numberOfCurrentScientificPeriodicals: 'Научная периодика',
         Literature21Century: 'Источники XXI века',
-        api_found: 'Найдено в OpenAlex',
-        api_not_found: 'Не найдено в OpenAlex',
+        api_found: 'Подтверждено',
+        api_not_found: 'Не найдено',
+        api_errors: 'Проверка не завершена',
+        verified_count: 'Подтверждено',
+        mismatch_count: 'С расхождениями',
+        partial_count: 'Частичное подтверждение',
+        ambiguous_count: 'Неоднозначно',
+        not_found_count: 'Не найдено',
+        incomplete_count: 'Проверка не завершена',
+        not_checkable_count: 'Нет подходящей проверки',
+        invalid_input_count: 'Некорректный ввод',
         api_average_similarity: 'Средний процент совпадения',
     };
     const currentEntries = liveAnalysis.entries ?? {};
@@ -380,6 +517,11 @@ export default function BibEditorPage({
                         </div>
                     )}
 
+                    {externalError && (
+                        <p role="alert" className="text-sm text-rose-700">
+                            {externalError}
+                        </p>
+                    )}
                     {checkHistory && (
                         <section className="rounded-3xl border border-sky-200 bg-sky-50 p-4 shadow-sm">
                             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -705,33 +847,17 @@ export default function BibEditorPage({
                                         type="button"
                                         disabled={
                                             externalProcessing ||
+                                            runActive ||
+                                            !externalCheckAvailable ||
                                             !hasEditorContent
                                         }
-                                        onClick={() => {
-                                            setExternalProcessing(true);
-                                            router.post(
-                                                '/check-external-bib',
-                                                {
-                                                    bib_content:
-                                                        updateForm.data
-                                                            .bib_content,
-                                                    original_filename:
-                                                        updateForm.data
-                                                            .original_filename,
-                                                },
-                                                {
-                                                    preserveScroll: true,
-                                                    onFinish: () =>
-                                                        setExternalProcessing(
-                                                            false,
-                                                        ),
-                                                },
-                                            );
-                                        }}
+                                        onClick={() =>
+                                            void startExternalCheck()
+                                        }
                                         className="inline-flex items-center justify-center gap-2 rounded-2xl border border-border bg-background px-5 py-3 text-sm font-semibold text-foreground transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-70"
                                     >
                                         <DatabaseZap className="h-4 w-4" />
-                                        {externalProcessing
+                                        {externalProcessing || runActive
                                             ? 'Проверяем внешние базы...'
                                             : 'Проверить во внешних базах'}
                                     </button>
@@ -766,8 +892,20 @@ export default function BibEditorPage({
                                                 Метрики
                                             </h2>
                                             <div className="mt-4 space-y-3">
-                                                {Object.entries(currentMetrics)
-                                                    .length ? (
+                                                {Object.entries(
+                                                    currentMetrics,
+                                                ).filter(
+                                                    ([key]) =>
+                                                        ![
+                                                            'api_found',
+                                                            'api_not_found',
+                                                            'api_errors',
+                                                        ].includes(key) ||
+                                                        !(
+                                                            'verified_count' in
+                                                            currentMetrics
+                                                        ),
+                                                ).length ? (
                                                     Object.entries(
                                                         currentMetrics,
                                                     ).map(([key, value]) => (
@@ -799,72 +937,79 @@ export default function BibEditorPage({
 
                                         <section className="rounded-2xl border border-border bg-background p-5">
                                             <h2 className="text-sm font-semibold text-foreground">
-                                                Поиск в OpenAlex
+                                                Проверка источников
                                             </h2>
+                                            <p className="mt-2 text-xs text-muted-foreground">
+                                                Проверяются существование
+                                                публикации и библиографические
+                                                данные. Наличие записи не
+                                                подтверждает научные выводы.
+                                            </p>
+                                            {snapshotChanged && (
+                                                <p
+                                                    role="status"
+                                                    className="mt-3 text-sm"
+                                                >
+                                                    Проверяется предыдущая
+                                                    версия текста. Результаты
+                                                    сохранены в истории.
+                                                </p>
+                                            )}
+                                            {externalRun && (
+                                                <p
+                                                    role="status"
+                                                    className="mt-3 text-sm"
+                                                >
+                                                    {externalRun.status ===
+                                                    'cancelled'
+                                                        ? 'Проверка отменена'
+                                                        : `Обработано: ${externalRun.finished_entries ?? 0} из ${externalRun.total_entries ?? '…'}`}
+                                                </p>
+                                            )}
+                                            {runActive && (
+                                                <button
+                                                    type="button"
+                                                    className="mt-2 text-sm underline"
+                                                    onClick={async () => {
+                                                        try {
+                                                            setExternalRun(
+                                                                await externalRequest(
+                                                                    `/bibliography/external-checks/${externalRun?.id}/cancel`,
+                                                                    {},
+                                                                ),
+                                                            );
+                                                        } catch (error) {
+                                                            setExternalError(
+                                                                error instanceof
+                                                                    Error
+                                                                    ? error.message
+                                                                    : 'Ошибка отмены.',
+                                                            );
+                                                        }
+                                                    }}
+                                                >
+                                                    Отменить проверку
+                                                </button>
+                                            )}
                                             <div className="mt-4 space-y-3">
                                                 {hasExternalResults ? (
                                                     Object.entries(
                                                         currentEntries,
-                                                    ).map(([key, entry]) => {
-                                                        const found =
-                                                            entry.api_check
-                                                                ?.found;
-                                                        const similarity =
-                                                            typeof entry
-                                                                .api_check
-                                                                ?.similarity ===
-                                                            'number'
-                                                                ? Math.round(
-                                                                      entry
-                                                                          .api_check
-                                                                          .similarity,
-                                                                  )
-                                                                : null;
-
-                                                        return (
-                                                            <div
-                                                                key={key}
-                                                                className={`rounded-2xl border p-4 ${
-                                                                    found
-                                                                        ? 'border-emerald-200 bg-emerald-50'
-                                                                        : 'border-rose-200 bg-rose-50'
-                                                                }`}
-                                                            >
-                                                                <div className="text-sm font-semibold text-foreground">
-                                                                    {key}
-                                                                </div>
-                                                                <div className="mt-1 text-xs text-muted-foreground">
-                                                                    {entry
-                                                                        .fields
-                                                                        ?.title ??
-                                                                        'Без названия'}
-                                                                </div>
-                                                                <div className="mt-3 text-xs">
-                                                                    {similarity !==
-                                                                    null ? (
-                                                                        <span className="rounded-full border border-border bg-card px-2.5 py-1 font-semibold text-foreground">
-                                                                            {
-                                                                                similarity
-                                                                            }
-                                                                            %
-                                                                        </span>
-                                                                    ) : (
-                                                                        <span className="text-muted-foreground">
-                                                                            {entry
-                                                                                .api_check
-                                                                                ?.message ??
-                                                                                'Не найдено'}
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })
+                                                    ).map(([key, entry]) => (
+                                                        <ExternalSourceResult
+                                                            key={key}
+                                                            entryKey={key}
+                                                            check={
+                                                                entry.api_check
+                                                            }
+                                                        />
+                                                    ))
                                                 ) : (
                                                     <p className="text-sm text-muted-foreground">
-                                                        Результаты поиска в
-                                                        OpenAlex пока
-                                                        недоступны.
+                                                        Запустите проверку
+                                                        источников в Crossref,
+                                                        Open Library, DataCite и
+                                                        DBLP.
                                                     </p>
                                                 )}
                                             </div>

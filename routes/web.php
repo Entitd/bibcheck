@@ -5,21 +5,25 @@ use App\Http\Controllers\Admin\BibtexFieldController;
 use App\Http\Controllers\Admin\DepartmentController;
 use App\Http\Controllers\BibFileController;
 use App\Http\Controllers\CheckHistoryController;
+use App\Http\Controllers\ExternalCheckController;
 use App\Http\Controllers\ProfileController;
 use App\Models\BibFile;
 use App\Models\BibtexField;
 use App\Models\BibtexTypeEntry;
 use App\Models\ValidationError;
-use App\Services\ExternalApi\OpenAlexProvider;
 use App\Support\BibEditorViewData;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-Route::get('apiCheck', [OpenAlexProvider::class, 'findByTitle']);
+Route::middleware(['auth', 'throttle:120,1'])->prefix('bibliography/external-checks')->group(function () {
+    Route::post('/', [ExternalCheckController::class, 'store'])->middleware('throttle:10,1');
+    Route::get('/{run}', [ExternalCheckController::class, 'show']);
+    Route::post('/{run}/cancel', [ExternalCheckController::class, 'cancel']);
+});
 
 Route::post('/upload-bib', [BibFileController::class, 'upload'])->name('bib.upload');
 Route::post('/create-bib', [BibFileController::class, 'create'])->name('bib.create');
-Route::post('/check-external-bib', [BibFileController::class, 'checkExternal'])->name('bib.check-external');
+Route::post('/check-external-bib', [BibFileController::class, 'checkExternal'])->middleware(['auth', 'throttle:10,1'])->name('bib.check-external');
 
 /**
  * Маршруты аутентификации (Fortify - автоматически регистрируются):

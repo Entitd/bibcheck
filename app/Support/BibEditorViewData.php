@@ -21,8 +21,8 @@ class BibEditorViewData
             ->filter(fn (array $error) => in_array($error['severity'] ?? 'error', ['error', 'syntax'], true))
             ->count();
         $warningCount = collect($errors)->count() - $errorCount;
-        $apiFoundCount = collect($entries)->filter(fn (array $entry) => data_get($entry, 'api_check.found'))->count();
-        $apiErrorCount = collect($entries)->filter(fn (array $entry) => data_get($entry, 'api_check.status') === 'api_error')->count();
+        $apiFoundCount = collect($entries)->filter(fn (array $entry) => data_get($entry, 'api_check.status') === 'verified')->count();
+        $apiErrorCount = collect($entries)->filter(fn (array $entry) => data_get($entry, 'api_check.status') === 'incomplete')->count();
         $averageSimilarity = $metrics['api_average_similarity'] ?? null;
         $courseResult = $analysisData['course_comparison_result'] ?? null;
         $bibtexTypes = BibtexTypeEntry::query()
@@ -68,9 +68,10 @@ class BibEditorViewData
             'apiErrorCount' => $apiErrorCount,
             'averageSimilarity' => $averageSimilarity,
             'bibliographyMetrics' => $bibliographyMetrics,
-            'hasApiKey' => $user ? filled($user->openalex_api_key) : false,
+            'hasApiKey' => (bool) config('bibliography.enabled'),
+            'externalCheckAvailable' => (bool) config('bibliography.enabled'),
             'courseResult' => $courseResult,
-            'isSuccessVerdict' => $courseResult ? str_contains(mb_strtolower($courseResult), 'соответствует') : false,
+            'isSuccessVerdict' => $courseResult ? str_contains(mb_strtolower($courseResult), 'соответствует') && ! str_starts_with(mb_strtolower($courseResult), 'не ') : false,
             'checkHistory' => $checkHistory,
             'bibtexTypes' => $bibtexTypes,
         ];
