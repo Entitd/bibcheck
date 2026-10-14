@@ -1,6 +1,7 @@
 <?php
 
 return [
+    'execution' => env('BIBCHECK_EXTERNAL_EXECUTION', 'queue'),
     'enabled' => env('BIBCHECK_EXTERNAL_ENABLED', true),
     'contact_email' => env('BIBCHECK_CONTACT_EMAIL'),
     'user_agent' => env('BIBCHECK_USER_AGENT', 'BibCheck/1.0'),

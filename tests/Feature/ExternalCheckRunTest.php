@@ -16,7 +16,7 @@ beforeEach(function () {
     Cache::flush();
     Http::preventStrayRequests();
     Queue::fake();
-    config(['queue.default' => 'database', 'services.openalex.key' => null,
+    config(['bibliography.execution' => 'queue', 'queue.default' => 'database', 'services.openalex.key' => null,
         'bibliography.providers.crossref.interval' => 0, 'bibliography.providers.datacite.interval' => 0]);
 });
 
@@ -211,4 +211,31 @@ test('a crashed request consumes its durable budget reservation before the next 
     expect($entry->fresh()->request_count)->toBe(1)->and($run->fresh()->finished_entries)->toBe(0);
     runEntry($entry->fresh());
     expect($entry->fresh()->request_count)->toBe(2)->and($run->fresh()->finished_entries)->toBe(1);
+});
+
+
+test('synchronous editor check completes and saves history without dispatching jobs', function () {
+    config(['bibliography.execution' => 'sync', 'queue.default' => 'sync']);
+    fakeQueuedWorks();
+    $response = $this->actingAs(User::factory()->create())
+        ->postJson('/bibliography/external-checks', ['bib_content' => queuedBib(2), 'original_filename' => 'test.bib'])
+        ->assertStatus(202)
+        ->assertJsonPath('data.status', 'completed')
+        ->assertJsonPath('data.finished_entries', 2)
+        ->assertJsonPath('data.analysis.entries.entry0.api_check.status', 'verified');
+    Queue::assertNothingPushed();
+    Http::assertSentCount(2);
+    $run = ExternalCheckRun::find($response->json('data.id'));
+    expect(CheckHistory::find($run->check_history_id)->status)->toBe('completed');
+    expect($run->entries()->sum('request_count'))->toBe(2);
+});
+
+test('synchronous editor check limits size before creating a run', function () {
+    config(['bibliography.execution' => 'sync']);
+    $this->actingAs(User::factory()->create())
+        ->postJson('/bibliography/external-checks', ['bib_content' => queuedBib(4), 'original_filename' => 'test.bib'])
+        ->assertUnprocessable();
+    $this->assertDatabaseCount('external_check_runs', 0);
+    Queue::assertNothingPushed();
+    Http::assertNothingSent();
 });

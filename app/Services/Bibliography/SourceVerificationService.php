@@ -9,6 +9,7 @@ use App\Services\ExternalApi\DblpProvider;
 use App\Services\ExternalApi\OpenAlexProvider;
 use App\Services\ExternalApi\OpenLibraryProvider;
 use App\Services\ExternalApi\ProviderHttpClient;
+use Illuminate\Support\Facades\Log;
 
 class SourceVerificationService
 {
@@ -16,6 +17,16 @@ class SourceVerificationService
 
     public function verify(array $fields, string $type = 'article', bool $defer = false, ?int $requestBudget = null, ?callable $reserveRequest = null): array
     {
+
+
+    Log::channel('external_db')->info("my test log");
+    Log::channel('external_db')->info("fields = " . print_r($fields, true));
+    Log::channel('external_db')->info("type = " . print_r($type, true));
+    Log::channel('external_db')->info("defer = " . print_r($defer, true));
+    Log::channel('external_db')->info("requestBudget = " . print_r($requestBudget, true));
+    Log::channel('external_db')->info("reserveRequest = " . print_r($reserveRequest, true));
+
+
         $query = $this->normalizer->query($fields, $type);
         $base = ['schema_version' => 2, 'algorithm_version' => config('bibliography.algorithm_version'),
             'found' => false, 'complete' => true, 'matched_by' => null, 'provider' => null,

@@ -4,6 +4,7 @@ namespace App\Services\ExternalApi;
 
 use App\Services\Bibliography\SourceMatcher;
 use App\Services\Bibliography\SourceVerificationService;
+use Illuminate\Support\Facades\Log;
 
 class BibValidator
 {
@@ -16,6 +17,8 @@ class BibValidator
 
     public function verifySourceOnline(array $fields, string $type = 'article'): array
     {
+        Log::channel('external_db')->info("test 1 ");
+
         return $this->verification->verify($fields, $type);
     }
 }

@@ -27,7 +27,8 @@ class ExternalCheckService
         if (! config('bibliography.enabled')) {
             throw ValidationException::withMessages(['bib_content' => 'Внешняя проверка отключена администратором.']);
         }
-        if (config('queue.default') === 'sync') {
+        $synchronous = config('bibliography.execution') === 'sync';
+        if (! $synchronous && config('queue.default') === 'sync') {
             throw ValidationException::withMessages(['bib_content' => 'Для проверки файла требуется фоновая очередь.']);
         }
         $parsed = $this->parser->parse($content);
@@ -43,17 +44,20 @@ class ExternalCheckService
                 throw ValidationException::withMessages(['bib_content' => 'Ключ записи длиннее 255 символов.']);
             }
         }
+        if ($synchronous && count($keys) > config('bibliography.sync_max_entries')) {
+            throw ValidationException::withMessages(['bib_content' => 'Временный режим без очереди допускает до '.config('bibliography.sync_max_entries').' записей за проверку.']);
+        }
         $hash = hash('sha256', $content);
 
-        return DB::transaction(function () use ($user, $content, $filename, $hash) {
+        $run = DB::transaction(function () use ($user, $content, $filename, $hash, $synchronous) {
             // Serialize submissions per owner, including different simultaneous files.
             User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
             $active = ExternalCheckRun::where('user_id', $user->id)->whereIn('status', ['pending', 'running']);
             $existing = (clone $active)->where('content_hash', $hash)->where('algorithm_version', config('bibliography.algorithm_version'))->first();
-            if ($existing) {
+            if ($existing && ! $synchronous) {
                 return $existing;
             }
-            if ($active->count() >= config('bibliography.max_active_runs')) {
+            if (! $synchronous && $active->count() >= config('bibliography.max_active_runs')) {
                 throw ValidationException::withMessages(['bib_content' => 'Сначала завершите или отмените активную проверку.']);
             }
             $analysis = $this->bibtex->localCheck($content);
@@ -74,11 +78,34 @@ class ExternalCheckService
             $position = 0;
             foreach ($analysis['entries'] as $key => $input) {
                 $entry = $run->entries()->create(['entry_key' => $key, 'position' => $position++, 'input' => $input]);
-                VerifyBibliographyEntry::dispatch($entry->id, $run->created_at->copy()->addMinutes(30)->toIso8601String())->onQueue('external-checks')->afterCommit();
+                if (! $synchronous) {
+                    VerifyBibliographyEntry::dispatch($entry->id, $run->created_at->copy()->addMinutes(30)->toIso8601String())->onQueue('external-checks')->afterCommit();
+                }
             }
 
             return $run;
         });
+
+        if ($synchronous) {
+            $run->update(['status' => 'running', 'started_at' => now()]);
+            foreach ($run->entries()->orderBy('position')->get() as $position => $entry) {
+                // Space sequential calls without running a background worker.
+                if ($position > 0) {
+                    usleep(1000000);
+                }
+                $entry->update(['status' => 'checking']);
+                $result = app(SourceVerificationService::class)->verify(
+                    $entry->input['fields'], $entry->input['type'], false,
+                    config('bibliography.max_requests'),
+                    fn () => ExternalCheckEntry::whereKey($entry->id)
+                        ->where('request_count', '<', config('bibliography.max_requests'))
+                        ->update(['request_count' => DB::raw('request_count + 1')]) === 1
+                );
+                $this->finish($entry->id, $result);
+            }
+        }
+
+        return $run->fresh();
     }
 
     public function finish(int $entryId, array $result): void

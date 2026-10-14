@@ -158,4 +158,5 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     Route::post('/department/requirements', [DepartmentController::class, 'updateRequirements'])->name('department.updateRequirements');
 });
 
+
 require __DIR__.'/settings.php';

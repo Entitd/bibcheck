@@ -51,7 +51,12 @@ return [
     */
 
     'channels' => [
-
+        
+        'external_db' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/external_db.log'),
+            'level' => 'debug'
+        ],
         'stack' => [
             'driver' => 'stack',
             'channels' => explode(',', (string) env('LOG_STACK', 'single')),

@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\RateLimiter;
 beforeEach(function () {
     Cache::flush();
     Http::preventStrayRequests();
-    config(['services.openalex.key' => null]);
+    config(['services.openalex.key' => null, 'services.openalex.url' => 'https://api.openalex.org']);
     foreach (['crossref', 'openlibrary', 'datacite', 'dblp', 'openalex'] as $provider) {
         config(['bibliography.providers.'.$provider.'.interval' => 0]);
     }

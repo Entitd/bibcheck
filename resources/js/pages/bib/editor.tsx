@@ -250,6 +250,12 @@ export default function BibEditorPage({
                 updateForm.data,
             );
             setExternalRun(run);
+            if (run.analysis?.raw_content === contentRef.current) {
+                setLiveAnalysis(run.analysis);
+                setLiveErrors(run.analysis.errors);
+            } else {
+                setSnapshotChanged(true);
+            }
         } catch (error) {
             setExternalError(
                 error instanceof Error

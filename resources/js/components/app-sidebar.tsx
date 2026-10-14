@@ -1,5 +1,5 @@
 import { Link, router, usePage } from '@inertiajs/react';
-import { BookOpen, FolderGit2, LayoutGrid, ListChecks, Search, Settings, TextSearch, X } from 'lucide-react';
+import { BookOpen, FolderGit2, LayoutGrid, LayoutTemplate, ListChecks, Search, Settings, TextSearch, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
