@@ -1,6 +1,6 @@
 # Проверка источников
 
-Первый этап: Crossref, Open Library, DataCite, DBLP. Дополнительный OpenAlex включается только с серверным ключом. Europe PMC и arXiv не включены.
+Первый этап: Crossref, Open Library, DataCite. DBLP реализован, но временно отключён из-за защиты от ботов. Дополнительный OpenAlex включается только с серверным ключом. Europe PMC и arXiv не включены.
 
 Проверяется наличие публикации и согласованность метаданных, а не истинность научных выводов. Локальные проверки ГОСТ/кафедры независимы от внешнего результата. Отсутствие публикации в выбранных базах не доказывает, что источник вымышлен.
 
@@ -70,3 +70,5 @@ OpenAlex использует Bearer-ключ только из серверно
 Официальные источники: [Crossref REST API](https://github.com/CrossRef/rest-api-doc), [Retraction Watch](https://www.crossref.org/documentation/retrieve-metadata/retraction-watch/), [Open Library Search](https://openlibrary.org/dev/docs/api/search), [DataCite REST API](https://support.datacite.org/docs/rest-api), [DBLP API](https://dblp.org/faq/13501473.html), [OpenAlex authentication и квоты](https://help.openalex.org/api/authentication/).
 
 Полный исходный набор тестов содержит пять прежних ошибок: четыре ссылки на отсутствующий `home` и ожидание 200 вместо существующего redirect `/dashboard`. Они воспроизведены на чистом HEAD в отдельной временной копии; к новой проверке не относятся.
+
+DBLP временно отключён в `config/bibliography.php` из-за HTML-защиты от ботов. Если все кандидаты ниже порога 60, ответ сохраняет `not_found`/`incomplete` и `found=false`, но содержит `nearest_match=true`, карточку наиболее похожего по названию источника и сравнение полей для ручной проверки. Это не подтверждение публикации. Если базы не вернули кандидатов с сравнимыми названиями, подсказка не показывается.

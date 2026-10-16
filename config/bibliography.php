@@ -18,7 +18,7 @@ return [
         'crossref' => ['cache_ttl' => 86400, 'enabled' => true, 'url' => 'https://api.crossref.org', 'interval' => 1],
         'openlibrary' => ['enabled' => true, 'url' => 'https://openlibrary.org', 'interval' => 1],
         'datacite' => ['enabled' => true, 'url' => 'https://api.datacite.org', 'interval' => 1, 'window_limit' => 450],
-        'dblp' => ['enabled' => true, 'url' => 'https://dblp.org', 'interval' => 1],
+        'dblp' => ['enabled' => false, 'url' => 'https://dblp.org', 'interval' => 1],
         'openalex' => ['enabled' => true, 'interval' => 1, 'daily_search_limit' => 900],
     ],
 ];

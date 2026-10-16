@@ -5,6 +5,7 @@ namespace App\Services\ExternalApi;
 use App\DTO\ProviderResult;
 use App\DTO\SourceQuery;
 use App\Services\Bibliography\SourceNormalizer;
+use Illuminate\Support\Facades\Log;
 
 class OpenLibraryProvider extends JsonProvider
 {
@@ -79,6 +80,8 @@ class OpenLibraryProvider extends JsonProvider
             }
             $candidates[] = $candidate;
         }
+
+        Log::channel('external_db')->info("OpenLibrary(candidates) = " . print_r($candidates, true));
 
         return $this->result($r, $candidates);
     }

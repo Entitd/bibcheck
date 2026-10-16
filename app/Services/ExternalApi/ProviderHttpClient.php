@@ -84,6 +84,16 @@ class ProviderHttpClient
             $start = microtime(true);
             try {
                 $response = $client->get(rtrim($base, '/').'/'.ltrim($path, '/'), $params);
+
+                if ($provider === 'dblp') {
+                    Log::channel('external_db')->info('Исходный ответ DBLP', [
+                        'http_status' => $response->status(),
+                        'content_type' => $response->header('Content-Type'),
+                        'body' => mb_substr($response->body(), 0, 3000),
+                    ]);
+                }
+
+
                 $status = match (true) {
                     $response->status() === 404 => 'not_found',
                     $response->status() === 429 => 'rate_limited',

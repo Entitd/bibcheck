@@ -4,6 +4,8 @@ namespace App\Services\ExternalApi;
 
 use App\DTO\ProviderResult;
 use App\DTO\SourceQuery;
+use Illuminate\Support\Facades\Log;
+
 
 class DataCiteProvider extends JsonProvider
 {
@@ -42,6 +44,8 @@ class DataCiteProvider extends JsonProvider
             return $this->malformed($r);
         }
 
+        Log::channel('external_db')->info("DataCite(candidates) = " . print_r(array_map($this->normalize(...), array_slice($r['data']['data'], 0, 5)), true));
+        
         return $this->result($r, array_map($this->normalize(...), array_slice($r['data']['data'], 0, 5)));
     }
 

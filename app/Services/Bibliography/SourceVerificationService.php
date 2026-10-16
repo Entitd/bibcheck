@@ -76,6 +76,8 @@ class SourceVerificationService
             'openlibrary' => OpenLibraryProvider::class, 'dblp' => DblpProvider::class, 'openalex' => OpenAlexProvider::class];
         // Здесь накапливаем подходящие результаты из всех уже опрошенных баз.
         $candidates = [];
+        // Самый похожий ответ сохраняем отдельно, даже если он ниже порога 60.
+        $nearest = null;
         // DOI имеет приоритет над ISBN. Без обоих ищем по метаданным.
         $identifier = $query->doi ? 'doi' : ($query->isbn ? 'isbn' : null);
 
@@ -146,6 +148,11 @@ class SourceVerificationService
                 // Matcher проверяет поля и возвращает status, found, similarity,
                 // field_checks и внутренний балл score для сортировки.
                 $match = $this->matcher->compare($query, $candidate, $identifier);
+                // Запасной кандидат выбирается по сходству названия среди всех баз.
+                // Без названия сравнение невозможно — такую карточку не предлагаем.
+                if ($match['similarity'] !== null && ($nearest === null || $match['similarity'] > $nearest['match']['similarity'])) {
+                    $nearest = ['provider' => $name, 'data' => $candidate, 'match' => $match];
+                }
                 // Совпавший DOI/ISBN позволяет сразу вернуть результат.
                 // Статус может быть mismatch, если остальные поля противоречат карточке.
                 // Эта ветка не проходит финальное понижение статуса при complete=false ниже.
@@ -180,6 +187,18 @@ class SourceVerificationService
         // Нет подходящих кандидатов: различаем обычный пустой поиск и сбой проверки.
         // not_found не доказывает, что публикация вымышлена.
         if (! $candidates) {
+            if ($nearest !== null) {
+                // Это подсказка для ручной проверки, а не подтверждённая публикация.
+                // Статус not_found/incomplete и found=false сохраняются.
+                // Сведения об отзыве чужой карточки к исходной записи не переносим.
+                $base = array_replace($base, [
+                    'nearest_match' => true, 'provider' => $nearest['provider'],
+                    'matched_by' => 'nearest_metadata', 'similarity' => $nearest['match']['similarity'],
+                    'external_title' => $nearest['data']['title'] ?? null, 'external_data' => $nearest['data'],
+                    'field_checks' => $nearest['match']['field_checks'],
+                ]);
+            }
+
             return $this->finish($base, $base['complete'] ? 'not_found' : 'incomplete');
         }
         // После обхода баз выбираем лучший результат из общего списка.

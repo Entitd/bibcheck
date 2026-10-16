@@ -162,6 +162,7 @@ test('book search retrieves a concrete edition and confirms its publication year
 });
 
 test('dblp handles a singleton author and keeps its identifier separate', function () {
+    config(['bibliography.providers.dblp.enabled' => true]);
     Http::fake(['api.crossref.org/*' => Http::response(['message' => ['items' => []]]),
         'dblp.org/*' => Http::response(['result' => ['hits' => ['@total' => '1', 'hit' => [['info' => ['key' => 'journals/example/Smith20', 'doi' => '10.1234/example', 'title' => 'Example Article', 'authors' => ['author' => ['text' => 'John Smith']], 'year' => '2020']]]]]])]);
     $fields = sourceFields();
@@ -235,4 +236,34 @@ test('malformed nested author metadata is incomplete without a server error', fu
     Http::fake(['api.crossref.org/*' => Http::response(['message' => crossrefWork(['author' => 'broken'])]),
         'api.datacite.org/*' => Http::response([], 404)]);
     expect(verifyFields(sourceFields())['status'])->toBe('incomplete');
+});
+
+
+test('weak search results show the closest title without confirming the source or calling dblp', function () {
+    config(['services.openalex.key' => 'test-key']);
+    Http::fake([
+        'api.crossref.org/*' => Http::response(['message' => ['items' => [crossrefWork(['title' => ['Bibliography archives']])]]]),
+        'api.openalex.org/*' => Http::response(['results' => [
+            ['id' => 'https://openalex.org/W1', 'title' => 'Bibliography prettyprinting', 'publication_year' => 1993],
+        ]]),
+    ]);
+    $result = verifyFields(['title' => 'Bibliography prettyprinting and syntax checking', 'author' => 'Beebe, Nelson', 'year' => '1993']);
+    expect($result['status'])->toBe('not_found')
+        ->and($result['found'])->toBeFalse()
+        ->and($result['nearest_match'])->toBeTrue()
+        ->and($result['provider'])->toBe('openalex')
+        ->and($result['external_title'])->toBe('Bibliography prettyprinting')
+        ->and($result['similarity'])->toBeLessThan(60)
+        ->and($result['field_checks'])->not->toBeEmpty()
+        ->and($result['retraction']['status'])->toBe('unknown');
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), 'dblp.org'));
+});
+
+test('empty search results do not invent a nearest candidate', function () {
+    Http::fake(['api.crossref.org/*' => Http::response(['message' => ['items' => []]])]);
+    $result = verifyFields(['title' => 'Example Article']);
+    expect($result['status'])->toBe('not_found')
+        ->and($result['external_data'])->toBeNull()
+        ->and($result['nearest_match'] ?? false)->toBeFalse();
+    Http::assertSentCount(1);
 });

@@ -18,6 +18,7 @@ export type BibliographicCandidate = {
 export type BibtexApiCheck = {
     schema_version?: number;
     found?: boolean;
+    nearest_match?: boolean;
     complete?: boolean;
     status?: string;
     provider?: string | null;

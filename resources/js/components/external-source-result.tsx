@@ -45,9 +45,17 @@ export default function ExternalSourceResult({
                 {entryKey}:{' '}
                 {historical
                     ? 'Исторический результат OpenAlex'
-                    : (labels[check?.status ?? 'queued'] ?? check?.status)}
+                    : check?.nearest_match
+                      ? 'Совпадение не подтверждено'
+                      : (labels[check?.status ?? 'queued'] ?? check?.status)}
             </div>
             <p className="mt-2 text-sm">{check?.message}</p>
+            {check?.nearest_match && (
+                <p className="mt-2 text-sm">
+                    Ниже показан наиболее похожий найденный источник. Он может
+                    относиться к другой публикации — проверьте его вручную.
+                </p>
+            )}
             {check?.warnings?.map((warning) => (
                 <p key={warning} className="mt-1 text-xs">
                     {warning}
@@ -55,13 +63,20 @@ export default function ExternalSourceResult({
             ))}
             <p className="mt-1 text-xs text-muted-foreground">
                 {check?.provider}{' '}
-                {check?.matched_by ? ` · По ${check.matched_by}` : ''}{' '}
+                {check?.matched_by
+                    ? ` · ${check.nearest_match ? 'Ближайший по названию' : `По ${check.matched_by}`}`
+                    : ''}{' '}
                 {check?.checked_at
                     ? ` · ${new Date(check.checked_at).toLocaleString()}`
                     : ''}
             </p>
             {check?.complete === false && (
                 <p className="mt-1 text-xs">Часть проверки не выполнена.</p>
+            )}
+            {check?.external_title && !url && (
+                <p className="mt-2 text-sm font-medium">
+                    {check.external_title}
+                </p>
             )}
             {url && (
                 <a
@@ -78,42 +93,46 @@ export default function ExternalSourceResult({
                     Сходство названий: {Math.round(check.similarity)}%
                 </p>
             )}
-            {check?.field_checks && (
-                <div className="mt-3 overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                        <thead>
-                            <tr>
-                                <th>Поле</th>
-                                <th>В записи</th>
-                                <th>В базе</th>
-                                <th>Результат</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {Object.entries(check.field_checks).map(
-                                ([field, item]) => (
-                                    <tr key={field}>
-                                        <td className="py-1 pr-2">{field}</td>
-                                        <td className="pr-2">
-                                            {display(item.input)}
-                                        </td>
-                                        <td className="pr-2">
-                                            {display(item.external)}
-                                        </td>
-                                        <td>
-                                            {item.status === 'equal'
-                                                ? 'Совпадает'
-                                                : item.status === 'different'
-                                                  ? 'Расхождение'
-                                                  : 'Нет данных'}
-                                        </td>
-                                    </tr>
-                                ),
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            )}
+            {check?.field_checks &&
+                Object.keys(check.field_checks).length > 0 && (
+                    <div className="mt-3 overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                            <thead>
+                                <tr>
+                                    <th>Поле</th>
+                                    <th>В записи</th>
+                                    <th>В базе</th>
+                                    <th>Результат</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {Object.entries(check.field_checks).map(
+                                    ([field, item]) => (
+                                        <tr key={field}>
+                                            <td className="py-1 pr-2">
+                                                {field}
+                                            </td>
+                                            <td className="pr-2">
+                                                {display(item.input)}
+                                            </td>
+                                            <td className="pr-2">
+                                                {display(item.external)}
+                                            </td>
+                                            <td>
+                                                {item.status === 'equal'
+                                                    ? 'Совпадает'
+                                                    : item.status ===
+                                                        'different'
+                                                      ? 'Расхождение'
+                                                      : 'Нет данных'}
+                                            </td>
+                                        </tr>
+                                    ),
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             {check?.status === 'ambiguous' &&
                 check.candidates?.map((candidate, index) => (
                     <p className="mt-2 text-xs" key={index}>
